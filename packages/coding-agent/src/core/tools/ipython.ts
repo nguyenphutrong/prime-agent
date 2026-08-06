@@ -16,6 +16,7 @@ import {
 	KernelManager,
 	type KernelSentAgentMessage,
 } from "../kernel/index.js";
+import type { KernelProcessAdapter } from "../kernel/process-adapter.js";
 import { manifestPathIn, type RestoreResult, snapshotPathIn } from "../kernel/state-snapshot.js";
 import type { PythonSkillRuntimeInfo } from "../skills.js";
 import { parseIpythonBashCell } from "./ipython-cell-code.js";
@@ -279,6 +280,8 @@ export interface IpythonToolOptions {
 	/** Typed host request handlers for the kernel↔host bridge (rlm.run, goal.*, …). */
 	hostHandlers?: HostRequestHandlers;
 	pythonSkills?: readonly PythonSkillRuntimeInfo[];
+	/** Optional process-launch adapter used to enforce kernel isolation. */
+	processAdapter?: KernelProcessAdapter;
 	/** Per-session artifact dir where the kernel namespace snapshot is stored. Omit to disable snapshots. */
 	snapshotDir?: string;
 	/** Resolves before this kernel starts — e.g. the previous provisioner's dispose, so a
@@ -482,6 +485,7 @@ export class IpythonKernelProvisioner {
 				sessionId: this.options?.sessionId,
 				hostHandlers: this.options?.hostHandlers,
 				pythonSkills: this.options?.pythonSkills,
+				processAdapter: this.options?.processAdapter,
 				// Only persistent sessions (which have an artifact dir) get a revivable snapshot.
 				snapshot: snapshotDir
 					? { path: snapshotPathIn(snapshotDir), manifestPath: manifestPathIn(snapshotDir) }

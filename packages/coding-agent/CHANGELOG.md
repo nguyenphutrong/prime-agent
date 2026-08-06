@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Added an extension API for enforcing custom process isolation on every IPython kernel launch.
+
 ## [0.7.0] - 2026-08-05
 
 ### Breaking Changes

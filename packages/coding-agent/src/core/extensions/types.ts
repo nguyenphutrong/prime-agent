@@ -46,6 +46,7 @@ import type { CompactionPreparation, CompactionResult } from "../compaction/inde
 import type { EventBus } from "../event-bus.js";
 import type { ExecOptions, ExecResult } from "../exec.js";
 import type { ReadonlyFooterDataProvider } from "../footer-data-provider.js";
+import type { KernelProcessAdapter } from "../kernel/process-adapter.js";
 import type { KeybindingsManager } from "../keybindings.js";
 import type { CustomMessage } from "../messages.js";
 import type { ModelRegistry } from "../model-registry.js";
@@ -1182,6 +1183,16 @@ export interface ExtensionAPI {
 	setThinkingLevel(level: ThinkingLevel): void;
 
 	// =========================================================================
+	// Kernel Isolation
+	// =========================================================================
+
+	/**
+	 * Register the process adapter used to launch every IPython kernel. Only one
+	 * adapter may be registered, and registration must happen during extension loading.
+	 */
+	registerKernelProcessAdapter(adapter: KernelProcessAdapter): void;
+
+	// =========================================================================
 	// Provider Registration
 	// =========================================================================
 
@@ -1405,6 +1416,8 @@ export interface ExtensionRuntimeState {
 	 * process.env. Returns undefined to use the parent env unchanged.
 	 */
 	getExecEnv?: () => Record<string, string | undefined> | undefined;
+	/** Process adapter registered during extension loading for all IPython kernels in this runtime. */
+	kernelProcessAdapter?: KernelProcessAdapter;
 	/** Provider registrations queued during extension loading, processed when runner binds */
 	pendingProviderRegistrations: Array<{ name: string; config: ProviderConfig; extensionPath: string }>;
 	/** Throws when this extension instance is stale after runtime replacement. */

@@ -10,6 +10,7 @@ import { v4 as uuid } from "uuid";
 import { Dealer, Subscriber } from "zeromq";
 import { ensureKernelPython, type KernelBootstrapProgressHandler, type KernelPythonSkill } from "./bootstrap.js";
 import { ForkServerUnavailable, forkKernel, isForkServerEnabled } from "./fork-server.js";
+import type { KernelProcessAdapter, KernelProcessPlan } from "./process-adapter.js";
 import {
 	buildListNamesCode,
 	buildRestoreCode,
@@ -84,6 +85,8 @@ export interface KernelManagerOptions {
 	sessionId?: string;
 	hostHandlers?: HostRequestHandlers;
 	pythonSkills?: readonly KernelPythonSkill[];
+	/** Optional process-launch adapter used to enforce kernel isolation. */
+	processAdapter?: KernelProcessAdapter;
 	/** Persist/revive the user namespace across kernel restarts and session resume. */
 	snapshot?: KernelSnapshotConfig;
 	/** Default: "prime-agent". */
@@ -511,13 +514,14 @@ function installSignalHandlersOnce(): void {
 export class KernelManager {
 	private readonly options: Pick<
 		KernelManagerOptions,
-		"python" | "cwd" | "env" | "sessionId" | "hostHandlers" | "pythonSkills" | "snapshot"
+		"python" | "cwd" | "env" | "sessionId" | "hostHandlers" | "pythonSkills" | "processAdapter" | "snapshot"
 	> &
 		Required<Pick<KernelManagerOptions, "username">>;
 	private readonly session = uuid();
 	private readonly commTargets = new Map<string, string>();
 	private readonly handledHostRequestCommIds = new Set<string>();
 	private kernel?: ChildProcess;
+	private kernelProcessCleanup?: () => void;
 	// Set instead of `kernel` when the kernel was forked from the forkserver: it is
 	// not a direct child, so it has no ChildProcess handle and is killed by pid.
 	private kernelPid?: number;
@@ -554,6 +558,7 @@ export class KernelManager {
 			sessionId: options.sessionId,
 			hostHandlers: options.hostHandlers,
 			pythonSkills: options.pythonSkills,
+			processAdapter: options.processAdapter,
 			snapshot: options.snapshot,
 			username: options.username ?? "prime-agent",
 		};
@@ -614,7 +619,7 @@ export class KernelManager {
 		// (disabled, unavailable, fork error) degrades to the direct-spawn path so
 		// correctness never depends on fork.
 		let forked = false;
-		if (isForkServerEnabled()) {
+		if (!this.options.processAdapter && isForkServerEnabled()) {
 			try {
 				this.kernelPid = await forkKernel(python, {
 					connectionPath: connection.path,
@@ -644,9 +649,24 @@ export class KernelManager {
 		}
 
 		if (!forked) {
-			const kernel = spawn(python, ["-m", "ipykernel_launcher", "-f", connection.path], {
+			const env = this.options.env ? { ...process.env, ...this.options.env } : { ...process.env };
+			let processPlan: KernelProcessPlan = {
+				command: python,
+				args: ["-m", "ipykernel_launcher", "-f", connection.path],
 				cwd: this.options.cwd,
-				env: this.options.env ? { ...process.env, ...this.options.env } : process.env,
+				env,
+			};
+			try {
+				processPlan = (await this.options.processAdapter?.prepare(processPlan)) ?? processPlan;
+				this.kernelProcessCleanup = processPlan.cleanup;
+			} catch (error) {
+				await this.shutdown();
+				this.state = "idle";
+				throw error;
+			}
+			const kernel = spawn(processPlan.command, [...processPlan.args], {
+				cwd: processPlan.cwd,
+				env: processPlan.env,
 				stdio: ["ignore", "pipe", "pipe"],
 			});
 			this.kernel = kernel;
@@ -1313,6 +1333,12 @@ export class KernelManager {
 		}
 		this.kernel = undefined;
 		this.kernelPid = undefined;
+		try {
+			this.kernelProcessCleanup?.();
+		} catch {
+			// Launch artifact cleanup is best-effort.
+		}
+		this.kernelProcessCleanup = undefined;
 		this.connection = undefined;
 		if (this.tempDir) {
 			try {

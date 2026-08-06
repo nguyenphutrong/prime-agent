@@ -1530,6 +1530,25 @@ const current = pi.getThinkingLevel();  // "off" | "minimal" | "low" | "medium" 
 pi.setThinkingLevel("high");
 ```
 
+### pi.registerKernelProcessAdapter(adapter)
+
+Register the process adapter used to launch every persistent IPython kernel. Registration must happen while the extension is loading, only one adapter may be registered, and registering one bypasses the kernel fork server so every kernel crosses the adapter.
+
+```typescript
+pi.registerKernelProcessAdapter({
+  async prepare(request) {
+    return {
+      ...request,
+      command: "/path/to/sandbox-wrapper",
+      args: [request.command, ...request.args],
+      cleanup: () => { /* remove generated launch artifacts */ },
+    };
+  },
+});
+```
+
+Adapters should throw when isolation cannot be prepared. The kernel launch then fails closed. `cleanup` must be synchronous and is called when the kernel exits or is disposed.
+
 ### pi.events
 
 Shared event bus for communication between extensions:

@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +21,33 @@ describe("KernelManager startup", () => {
 			rmSync(tempDir, { recursive: true, force: true });
 			tempDir = "";
 		}
+	});
+
+	it("routes direct kernel launches through the registered process adapter", async () => {
+		const python = join(tempDir, "python");
+		const requestFile = join(tempDir, "request.json");
+		writeExecutable(python, ["#!/bin/sh", "exit 42", ""].join("\n"));
+		const cleanup = vi.fn();
+		const manager = new KernelManager({
+			python,
+			cwd: tempDir,
+			processAdapter: {
+				prepare(request) {
+					writeFileSync(requestFile, JSON.stringify(request));
+					return { ...request, cleanup };
+				},
+			},
+		});
+
+		try {
+			await expect(manager.execute("print(1)")).rejects.toThrow(/Kernel exited before resolving ports/);
+			const request = JSON.parse(readFileSync(requestFile, "utf8")) as { command: string; args: string[] };
+			expect(request.command).toBe(python);
+			expect(request.args.slice(0, 3)).toEqual(["-m", "ipykernel_launcher", "-f"]);
+		} finally {
+			await manager.dispose();
+		}
+		expect(cleanup).toHaveBeenCalledOnce();
 	});
 
 	it("surfaces kernels that exit before resolving ports", async () => {

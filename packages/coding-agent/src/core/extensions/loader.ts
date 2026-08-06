@@ -307,6 +307,14 @@ function createExtensionAPI(
 			runtime.setThinkingLevel(level);
 		},
 
+		registerKernelProcessAdapter(adapter) {
+			runtime.assertActive();
+			if (runtime.kernelProcessAdapter) {
+				throw new Error("Only one IPython kernel process adapter can be registered");
+			}
+			runtime.kernelProcessAdapter = adapter;
+		},
+
 		registerProvider(name: string, config: ProviderConfig) {
 			runtime.assertActive();
 			runtime.registerProvider(name, config, extension.path);

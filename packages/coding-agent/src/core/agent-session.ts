@@ -8536,6 +8536,7 @@ export class AgentSession {
 		includeAllExtensionTools?: boolean;
 	}): void {
 		const pythonSkills = getPythonSkillRuntimeInfo(this._modelVisibleSkills());
+		const extensionsResult = this._resourceLoader.getExtensions();
 		let configuredBaseToolDefinitions: Record<string, ToolDefinition>;
 		if (this._baseToolsOverride) {
 			configuredBaseToolDefinitions = Object.fromEntries(
@@ -8560,6 +8561,7 @@ export class AgentSession {
 				sessionId: this.sessionId,
 				hostHandlers: this._createKernelHostHandlers(),
 				pythonSkills,
+				processAdapter: extensionsResult.runtime.kernelProcessAdapter,
 				snapshotDir: this._ipythonKernelSnapshotDir,
 				readyGate: previousDispose,
 				onRestore: notifyRestore ? (result) => this._onIpythonStateRestored(result) : undefined,
@@ -8579,7 +8581,6 @@ export class AgentSession {
 			Object.entries(configuredBaseToolDefinitions).map(([name, tool]) => [name, tool as ToolDefinition]),
 		);
 
-		const extensionsResult = this._resourceLoader.getExtensions();
 		if (options.flagValues) {
 			for (const [name, value] of options.flagValues) {
 				extensionsResult.runtime.flagValues.set(name, value);
