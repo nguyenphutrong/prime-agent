@@ -34,6 +34,7 @@ out.jsonl
 pi-*.html
 out.html
 packages/coding-agent/binaries/
+packages/coding-agent/release/global-install/
 todo.md
 plans/
 .prime/agent/
