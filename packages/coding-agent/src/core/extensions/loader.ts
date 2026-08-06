@@ -398,7 +398,13 @@ async function loadExtension(
 
 		const extension = createExtension(extensionPath, resolvedPath);
 		const api = createExtensionAPI(extension, runtime, cwd, eventBus);
-		await factory(api);
+		const previousKernelProcessAdapter = runtime.kernelProcessAdapter;
+		try {
+			await factory(api);
+		} catch (error) {
+			runtime.kernelProcessAdapter = previousKernelProcessAdapter;
+			throw error;
+		}
 
 		return { extension, error: null };
 	} catch (err) {
@@ -419,7 +425,13 @@ export async function loadExtensionFromFactory(
 ): Promise<Extension> {
 	const extension = createExtension(extensionPath, extensionPath);
 	const api = createExtensionAPI(extension, runtime, cwd, eventBus);
-	await factory(api);
+	const previousKernelProcessAdapter = runtime.kernelProcessAdapter;
+	try {
+		await factory(api);
+	} catch (error) {
+		runtime.kernelProcessAdapter = previousKernelProcessAdapter;
+		throw error;
+	}
 	return extension;
 }
 

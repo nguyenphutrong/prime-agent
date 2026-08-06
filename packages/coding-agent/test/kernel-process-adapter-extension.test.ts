@@ -17,6 +17,25 @@ describe("kernel process adapter extension registration", () => {
 		expect(runtime.kernelProcessAdapter).toBe(adapter);
 	});
 
+	it("rolls back an adapter from a failed extension", async () => {
+		const runtime = createExtensionRuntime();
+		const adapter = {
+			prepare: (request: Parameters<NonNullable<typeof runtime.kernelProcessAdapter>["prepare"]>[0]) => request,
+		};
+		await expect(
+			loadExtensionFromFactory(
+				(pi) => {
+					pi.registerKernelProcessAdapter(adapter);
+					throw new Error("extension failed");
+				},
+				process.cwd(),
+				createEventBus(),
+				runtime,
+			),
+		).rejects.toThrow("extension failed");
+		expect(runtime.kernelProcessAdapter).toBeUndefined();
+	});
+
 	it("rejects multiple adapters", async () => {
 		const runtime = createExtensionRuntime();
 		const adapter = {
