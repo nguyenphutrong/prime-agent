@@ -110,6 +110,71 @@ describe("ENG-4649 subagent model selection", () => {
 		}
 	});
 
+	it("uses configured ChatGPT models when discovery returns an empty catalog", async () => {
+		const codexProvider = "openai-codex";
+		const harness = await createHarness({
+			provider: codexProvider,
+			models: [{ id: "parent-model" }, { id: "child-model" }],
+		});
+		const fetchModels = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ models: [] }), {
+					status: 200,
+					headers: { "content-type": "application/json" },
+				}),
+		);
+		vi.stubGlobal("fetch", fetchModels);
+		try {
+			harness.authStorage.setRuntimeApiKey(codexProvider, openAICodexToken("account-1"));
+			const discovered = await harness.session.findRlmModels("", 20);
+			expect(discovered.models.map((model) => model.selector)).toEqual(
+				expect.arrayContaining([`${codexProvider}/parent-model`, `${codexProvider}/child-model`]),
+			);
+
+			harness.setResponses([fauxAssistantMessage("configured child answer")]);
+			const result = await harness.session.runRlmChild("use configured child model", {
+				model: `${codexProvider}/child-model`,
+			});
+			expect(result.model).toBe(`${codexProvider}/child-model`);
+			expect(fetchModels).toHaveBeenCalledOnce();
+		} finally {
+			vi.unstubAllGlobals();
+			harness.cleanup();
+		}
+	});
+
+	it("does not treat a non-empty malformed ChatGPT catalog as empty", async () => {
+		const codexProvider = "openai-codex";
+		const harness = await createHarness({
+			provider: codexProvider,
+			models: [{ id: "parent-model" }, { id: "child-model" }],
+		});
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ models: [{}] }), {
+						status: 200,
+						headers: { "content-type": "application/json" },
+					}),
+			),
+		);
+		try {
+			harness.authStorage.setRuntimeApiKey(codexProvider, openAICodexToken("account-1"));
+			await expect(harness.session.findRlmModels("", 20)).resolves.toEqual({ models: [] });
+			await expect(
+				harness.session.runRlmChild("reject undiscovered child model", {
+					model: `${codexProvider}/child-model`,
+				}),
+			).rejects.toThrow(
+				`Requested subagent model "${codexProvider}/child-model" is unavailable, unauthenticated, or expired`,
+			);
+		} finally {
+			vi.unstubAllGlobals();
+			harness.cleanup();
+		}
+	});
+
 	it("includes private Prime models authorized for the selected team", async () => {
 		const harness = await createHarness({ provider, models: [{ id: "parent-model" }] });
 		const fetchModels = vi.fn(

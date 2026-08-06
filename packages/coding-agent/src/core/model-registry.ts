@@ -387,18 +387,21 @@ function openAICodexModelsUrl(baseUrl: string): string {
 	return url.toString();
 }
 
-function readOpenAICodexModelIds(value: unknown): Set<string> {
+function readOpenAICodexModelCatalog(value: unknown): { isEmpty: boolean; modelIds: Set<string> } {
 	if (!value || typeof value !== "object" || !("models" in value) || !Array.isArray(value.models)) {
 		throw new Error("Invalid OpenAI Codex model catalog");
 	}
-	return new Set(
-		value.models.flatMap((model) => {
-			if (!model || typeof model !== "object" || !("slug" in model) || typeof model.slug !== "string") {
-				return [];
-			}
-			return [model.slug];
-		}),
-	);
+	return {
+		isEmpty: value.models.length === 0,
+		modelIds: new Set(
+			value.models.flatMap((model) => {
+				if (!model || typeof model !== "object" || !("slug" in model) || typeof model.slug !== "string") {
+					return [];
+				}
+				return [model.slug];
+			}),
+		),
+	};
 }
 
 const PRIVATE_PRIME_AUTHORIZATION_CACHE_FILE = "prime-inference-private-models.json";
@@ -1000,7 +1003,10 @@ export class ModelRegistry {
 			if (!response.ok) {
 				throw new Error(`OpenAI Codex model discovery failed with HTTP ${response.status}`);
 			}
-			const modelIds = readOpenAICodexModelIds(await response.json());
+			const discovered = readOpenAICodexModelCatalog(await response.json());
+			// Some valid accounts return an empty catalog even though configured models execute successfully.
+			// Treat only a successful empty response as inconclusive; discovery failures still fail closed below.
+			const modelIds = discovered.isEmpty ? new Set(codexModels.map((model) => model.id)) : discovered.modelIds;
 			this.openAICodexModelsCache = { authFingerprint, modelIds, refreshedAt: Date.now() };
 			return availableModels.filter((model) => model.provider !== "openai-codex" || modelIds.has(model.id));
 		} catch {
