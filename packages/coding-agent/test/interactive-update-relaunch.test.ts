@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildDaemonUpdateRestartReport } from "../src/cli/daemon-update-restart.js";
 import {
+	buildInteractiveUpdateProcessArgs,
 	buildUpdateChildArgs,
 	buildUpdateRelaunchArgs,
 	resolveInteractiveUpdateDaemonSocketPath,
@@ -57,6 +58,39 @@ describe("buildUpdateChildArgs", () => {
 			),
 		).toBe("/tmp/explicit.sock");
 		expect(updateArgsIncludeSelf(["--daemon-socket", "/tmp/explicit.sock"])).toBe(true);
+	});
+});
+
+describe("buildInteractiveUpdateProcessArgs", () => {
+	it("normalizes the legacy extensions flag to the public package update command", () => {
+		expect(buildInteractiveUpdateProcessArgs(["--extensions"], "/tmp/daemon.sock")).toEqual(["package", "update"]);
+	});
+
+	it("normalizes a targeted legacy extension flag to a positional package source", () => {
+		expect(buildInteractiveUpdateProcessArgs(["--extension", "npm:@foo/bar"], "/tmp/daemon.sock")).toEqual([
+			"package",
+			"update",
+			"npm:@foo/bar",
+		]);
+	});
+
+	it("drops self-update-only flags from package updates", () => {
+		expect(
+			buildInteractiveUpdateProcessArgs(
+				["--extensions", "--force", "--daemon-socket", "/tmp/legacy.sock"],
+				"/tmp/daemon.sock",
+			),
+		).toEqual(["package", "update"]);
+	});
+
+	it("keeps self updates on the update command with daemon restart coordination", () => {
+		expect(buildInteractiveUpdateProcessArgs(["--self", "--force"], "/tmp/daemon.sock")).toEqual([
+			"update",
+			"--self",
+			"--force",
+			"--daemon-socket",
+			"/tmp/daemon.sock",
+		]);
 	});
 });
 

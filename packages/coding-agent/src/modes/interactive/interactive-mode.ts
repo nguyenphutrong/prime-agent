@@ -724,6 +724,38 @@ export function buildUpdateChildArgs(args: readonly string[], daemonSocketPath: 
 	return args.includes("--daemon-socket") ? [...args] : [...args, "--daemon-socket", daemonSocketPath];
 }
 
+export function buildInteractiveUpdateProcessArgs(args: readonly string[], daemonSocketPath: string): string[] {
+	if (updateArgsIncludeSelf(args)) {
+		return ["update", ...buildUpdateChildArgs(args, daemonSocketPath)];
+	}
+
+	const packageArgs: string[] = [];
+	for (let index = 0; index < args.length; index++) {
+		const arg = args[index];
+		if (arg === "--extensions" || arg === "--force") {
+			continue;
+		}
+		if (arg === "--extension") {
+			const source = args[index + 1];
+			if (source && !source.startsWith("-")) {
+				packageArgs.push(source);
+				index++;
+			} else {
+				packageArgs.push(arg);
+			}
+			continue;
+		}
+		if (arg === "--daemon-socket") {
+			if (args[index + 1]) {
+				index++;
+			}
+			continue;
+		}
+		packageArgs.push(arg);
+	}
+	return ["package", "update", ...packageArgs];
+}
+
 export function resolveInteractiveUpdateDaemonSocketPath(
 	args: readonly string[],
 	activeDaemonSocketPath: string,
@@ -8388,21 +8420,17 @@ export class InteractiveMode {
 			updateArgs,
 			resolveDaemonUpdateRestartSocketPath(this.options.daemonSocketPath),
 		);
-		const updateChildArgs = includesSelf ? buildUpdateChildArgs(updateArgs, daemonSocketPath) : updateArgs;
+		const updateProcessArgs = buildInteractiveUpdateProcessArgs(updateArgs, daemonSocketPath);
 		this.stopWorkingLoader();
 		await this.ui.terminal.drainInput(1000).catch(() => undefined);
 		this.ui.stop();
 
 		const updateEnv = includesSelf ? { ...process.env, [SELF_UPDATE_INTERACTIVE_CHILD_ENV]: "1" } : process.env;
-		const updateResult = spawnSync(
-			process.execPath,
-			[...process.execArgv, entrypoint, "update", ...updateChildArgs],
-			{
-				stdio: "inherit",
-				cwd: updateCwd,
-				env: updateEnv,
-			},
-		);
+		const updateResult = spawnSync(process.execPath, [...process.execArgv, entrypoint, ...updateProcessArgs], {
+			stdio: "inherit",
+			cwd: updateCwd,
+			env: updateEnv,
+		});
 		const updateExitCode = updateResult.status ?? (updateResult.signal ? 1 : 0);
 		const selfUpdateNotAttempted =
 			includesSelf && !updateResult.error && updateExitCode === SELF_UPDATE_NOT_ATTEMPTED_EXIT_CODE;
